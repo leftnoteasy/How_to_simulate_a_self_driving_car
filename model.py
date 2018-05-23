@@ -1,44 +1,35 @@
 import pandas as pd # data analysis toolkit - create, read, update, delete datasets
 import numpy as np #matrix math
 from sklearn.model_selection import train_test_split #to split out training and testing data 
+import tensorflow as tf
 #keras is a high level wrapper on top of tensorflow (machine learning library)
 #The Sequential container is a linear stack of layers
-from keras.models import Sequential
 #popular optimization strategy that uses gradient descent 
-from keras.optimizers import Adam
 #to save our model periodically as checkpoints for loading later
-from keras.callbacks import ModelCheckpoint
 #what types of layers do we want our model to have?
-from keras.layers import Lambda, Conv2D, MaxPooling2D, Dropout, Dense, Flatten
 #helper class to define input shape and generate training images given image paths & steering angles
-from utils import INPUT_SHAPE, batch_generator
+from utils import INPUT_SHAPE, batch_generator, IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_CHANNELS, DATA_SHAPE, DATA_LENGTH
 #for command line arguments
 import argparse
 #for reading files
 import os
+import cv2
 
 #for debugging, allows for reproducible (deterministic) results 
 np.random.seed(0)
 
-
-def load_data(args):
-    """
-    Load training data and split it into training and validation set
-    """
-    #reads CSV file into a single dataframe variable
-    data_df = pd.read_csv(os.path.join(os.getcwd(), args.data_dir, 'driving_log.csv'), names=['center', 'left', 'right', 'steering', 'throttle', 'reverse', 'speed'])
-
-    #yay dataframes, we can select rows and columns by their names
-    #we'll store the camera images as our input data
-    X = data_df[['center', 'left', 'right']].values
-    #and our steering commands as our output data
-    y = data_df['steering'].values
-
-    #now we can split the data into a training (80), testing(20), and validation set
-    #thanks scikit learn
-    X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=args.test_size, random_state=0)
-
-    return X_train, X_valid, y_train, y_valid
+def training_random_shit(batch_size):
+    while(True):
+      images = np.empty([batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 1])
+      steering = np.empty([batch_size])
+      for i in xrange(0, batch_size):
+        data = np.random.random_sample((12 * 12, 1))
+        data = np.reshape(data, (12, 12, 1))
+        data = cv2.resize(data, (IMAGE_WIDTH, IMAGE_HEIGHT))
+        data = np.reshape(data, (IMAGE_HEIGHT,IMAGE_WIDTH, 1))
+        images[i] = data
+        steering[i] = 1
+      yield images, steering
 
 
 def build_model(args):
@@ -61,36 +52,34 @@ def build_model(args):
     dropout avoids overfitting
     ELU(Exponential linear unit) function takes care of the Vanishing gradient problem. 
     """
-    model = Sequential()
-    model.add(Lambda(lambda x: x/127.5-1.0, input_shape=INPUT_SHAPE))
-    model.add(Conv2D(24, 5, 5, activation='elu', subsample=(2, 2)))
-    model.add(Conv2D(36, 5, 5, activation='elu', subsample=(2, 2)))
-    model.add(Conv2D(48, 5, 5, activation='elu', subsample=(2, 2)))
-    model.add(Conv2D(64, 3, 3, activation='elu'))
-    model.add(Conv2D(64, 3, 3, activation='elu'))
-    model.add(Dropout(args.keep_prob))
-    model.add(Flatten())
-    model.add(Dense(100, activation='elu'))
-    model.add(Dense(50, activation='elu'))
-    model.add(Dense(10, activation='elu'))
-    model.add(Dense(1))
+    model = tf.keras.Sequential()
+    model.add(tf.keras.layers.Lambda(lambda x: x/127.5-1.0, input_shape=(IMAGE_HEIGHT, IMAGE_WIDTH, 1)))
+    model.add(tf.keras.layers.Conv2D(24, (5, 5), strides=(2, 2), activation='elu'))
+    model.add(tf.keras.layers.Conv2D(36, (5, 5), strides=(2, 2), activation='elu'))
+    model.add(tf.keras.layers.Conv2D(48, (5, 5), strides=(2, 2), activation='elu'))
+    model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='elu'))
+    model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='elu'))
+    model.add(tf.keras.layers.Dropout(args.keep_prob))
+    model.add(tf.keras.layers.Flatten())
+    model.add(tf.keras.layers.Dense(100, activation='elu'))
+    model.add(tf.keras.layers.Dense(50, activation='elu'))
+    model.add(tf.keras.layers.Dense(10, activation='elu'))
+    model.add(tf.keras.layers.Dense(1))
     model.summary()
 
     return model
 
 
-def train_model(model, args, X_train, X_valid, y_train, y_valid):
-    """
-    Train the model
-    """
-    #Saves the model after every epoch.
+def train_model(model, args):
+    """np.array([np.random.random_sample(INPUT_SHAPE)]) the model after every epoch.
     #quantity to monitor, verbosity i.e logging mode (0 or 1), 
     #if save_best_only is true the latest best model according to the quantity monitored will not be overwritten.
     #mode: one of {auto, min, max}. If save_best_only=True, the decision to overwrite the current save file is
     # made based on either the maximization or the minimization of the monitored quantity. For val_acc, 
     #this should be max, for val_loss this should be min, etc. In auto mode, the direction is automatically
     # inferred from the name of the monitored quantity.
-    checkpoint = ModelCheckpoint('model-{epoch:03d}.h5',
+    """
+    checkpoint = tf.keras.callbacks.ModelCheckpoint('model-{epoch:03d}.h5',
                                  monitor='val_loss',
                                  verbose=0,
                                  save_best_only=args.save_best_only,
@@ -102,7 +91,7 @@ def train_model(model, args, X_train, X_valid, y_train, y_valid):
     #divide by the number of them
     #that value is our mean squared error! this is what we want to minimize via
     #gradient descent
-    model.compile(loss='mean_squared_error', optimizer=Adam(lr=args.learning_rate))
+    model.compile(loss='mean_squared_error', optimizer=tf.keras.optimizers.Adam(lr=args.learning_rate))
 
     #Fits the model on data generated batch-by-batch by a Python generator.
 
@@ -110,12 +99,12 @@ def train_model(model, args, X_train, X_valid, y_train, y_valid):
     #For instance, this allows you to do real-time data augmentation on images on CPU in 
     #parallel to training your model on GPU.
     #so we reshape our data into their appropriate batches and train our model simulatenously
-    model.fit_generator(batch_generator(args.data_dir, X_train, y_train, args.batch_size, True),
+    model.fit_generator(training_random_shit(args.batch_size), #training data
                         args.samples_per_epoch,
                         args.nb_epoch,
-                        max_q_size=1,
-                        validation_data=batch_generator(args.data_dir, X_valid, y_valid, args.batch_size, False),
-                        nb_val_samples=len(X_valid),
+                        max_queue_size=1,
+                        validation_data=training_random_shit(args.batch_size),#validation data
+                        validation_steps=args.batch_size,
                         callbacks=[checkpoint],
                         verbose=1)
 
@@ -152,11 +141,10 @@ def main():
     print('-' * 30)
 
     #load data
-    data = load_data(args)
     #build model
     model = build_model(args)
     #train model on data, it saves as model.h5 
-    train_model(model, args, *data)
+    train_model(model, args)
 
 
 if __name__ == '__main__':
