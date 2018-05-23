@@ -8,7 +8,7 @@ import tensorflow as tf
 #to save our model periodically as checkpoints for loading later
 #what types of layers do we want our model to have?
 #helper class to define input shape and generate training images given image paths & steering angles
-from utils import INPUT_SHAPE, batch_generator, IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_CHANNELS, DATA_SHAPE, DATA_LENGTH
+from utils import INPUT_SHAPE, batch_generator, IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_CHANNELS, DATA_SHAPE, DATA_LENGTH, data_to_training_sample
 #for command line arguments
 import argparse
 #for reading files
@@ -18,18 +18,54 @@ import cv2
 #for debugging, allows for reproducible (deterministic) results 
 np.random.seed(0)
 
-def training_random_shit(batch_size):
-    while(True):
-      images = np.empty([batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 1])
-      steering = np.empty([batch_size])
-      for i in xrange(0, batch_size):
-        data = np.random.random_sample((12 * 12, 1))
-        data = np.reshape(data, (12, 12, 1))
-        data = cv2.resize(data, (IMAGE_WIDTH, IMAGE_HEIGHT))
-        data = np.reshape(data, (IMAGE_HEIGHT,IMAGE_WIDTH, 1))
-        images[i] = data
-        steering[i] = 1
-      yield images, steering
+def batch_generator(x, y, batch_size):
+    while (True):
+        images = np.empty([batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 1])
+        outputs = np.empty([batch_size, 2])
+
+        i = 0
+        for index in np.random.permutation(x.shape[0]):
+            images[i] = x[index]
+            outputs[i] = y[index]
+            i += 1
+            if i == batch_size:
+                break
+
+        yield images, outputs
+
+def load_data(args):
+    f = open(args.data_dir)
+
+    all_data_x = np.empty([0, 300])
+    all_data_y = np.empty(0)
+
+    raw_data = np.empty(288)
+
+    i = 0
+    for line in f:
+        numbers = line.split(" ")
+
+        if int(float(numbers[0])) != 288:
+            speed = float(numbers[0])
+            steering = float(numbers[1])
+            d = data_to_training_sample(raw_data, speed, steering)
+            print len(d[0])
+            all_data_x = np.append(all_data_x, d[0])
+            all_data_y = np.append(all_data_y, d[1])
+            i = i+1
+        else:
+            raw_data = np.empty(288)
+            for n in xrange(1, len(numbers)):
+                raw_data[n - 1] = float(numbers[n])
+
+    all_data_x.resize(len(all_data_x) / 300, 300)
+    print all_data_x
+    print "Found, ", i, " examples"
+    print all_data_x, all_data_y
+
+    # 20% test set
+    x_train, x_valid, y_train, y_valid = train_test_split(all_data_x, all_data_y, test_size=0.2, random_state=0)
+    return x_train, x_valid, y_train, y_valid
 
 
 def build_model(args):
@@ -54,23 +90,27 @@ def build_model(args):
     """
     model = tf.keras.Sequential()
     model.add(tf.keras.layers.Lambda(lambda x: x/127.5-1.0, input_shape=(IMAGE_HEIGHT, IMAGE_WIDTH, 1)))
-    model.add(tf.keras.layers.Conv2D(24, (5, 5), strides=(2, 2), activation='elu'))
-    model.add(tf.keras.layers.Conv2D(36, (5, 5), strides=(2, 2), activation='elu'))
-    model.add(tf.keras.layers.Conv2D(48, (5, 5), strides=(2, 2), activation='elu'))
-    model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='elu'))
-    model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='elu'))
+    model.add(tf.keras.layers.Conv2D(24, (5, 5), strides=(2, 2), activation='elu', kernel_initializer='normal', bias_initializer='zeros'))
+    model.add(tf.keras.layers.Conv2D(36, (5, 5), strides=(2, 2), activation='elu', kernel_initializer='normal',
+              bias_initializer='zeros'))
+    model.add(tf.keras.layers.Conv2D(48, (5, 5), strides=(2, 2), activation='elu', kernel_initializer='normal',
+              bias_initializer='zeros'))
+    model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='elu', kernel_initializer='normal',
+                                     bias_initializer='zeros'))
+    model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='elu', kernel_initializer='normal',
+                                     bias_initializer='zeros'))
     model.add(tf.keras.layers.Dropout(args.keep_prob))
     model.add(tf.keras.layers.Flatten())
     model.add(tf.keras.layers.Dense(100, activation='elu'))
     model.add(tf.keras.layers.Dense(50, activation='elu'))
     model.add(tf.keras.layers.Dense(10, activation='elu'))
-    model.add(tf.keras.layers.Dense(1))
+    model.add(tf.keras.layers.Dense(2))
     model.summary()
 
     return model
 
 
-def train_model(model, args):
+def train_model(model, args, x_train, x_valid, y_train, y_valid):
     """np.array([np.random.random_sample(INPUT_SHAPE)]) the model after every epoch.
     #quantity to monitor, verbosity i.e logging mode (0 or 1), 
     #if save_best_only is true the latest best model according to the quantity monitored will not be overwritten.
@@ -99,11 +139,11 @@ def train_model(model, args):
     #For instance, this allows you to do real-time data augmentation on images on CPU in 
     #parallel to training your model on GPU.
     #so we reshape our data into their appropriate batches and train our model simulatenously
-    model.fit_generator(training_random_shit(args.batch_size), #training data
+    model.fit_generator(batch_generator(x_train, y_train, args.batch_size), #training data
                         args.samples_per_epoch,
                         args.nb_epoch,
                         max_queue_size=1,
-                        validation_data=training_random_shit(args.batch_size),#validation data
+                        validation_data=batch_generator(x_valid, y_valid, args.batch_size),#validation data
                         validation_steps=args.batch_size,
                         callbacks=[checkpoint],
                         verbose=1)
@@ -141,10 +181,11 @@ def main():
     print('-' * 30)
 
     #load data
+    x_train, x_valid, y_train, y_valid = load_data(args)
     #build model
     model = build_model(args)
     #train model on data, it saves as model.h5 
-    train_model(model, args)
+    train_model(model, args, x_train, x_valid, y_train, y_valid)
 
 
 if __name__ == '__main__':

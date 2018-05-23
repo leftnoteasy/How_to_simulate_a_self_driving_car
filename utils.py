@@ -159,3 +159,16 @@ def batch_generator(data_dir, image_paths, steering_angles, batch_size, is_train
                 break
         yield images, steers
 
+def data_to_training_sample(lidar_data, speed, steering):
+    data = np.empty([300])
+    for i in xrange(0, len(lidar_data)):
+        data[i] = lidar_data[i]
+
+    data[299] = speed
+    data[298] = steering
+
+    data = np.reshape(data, (15, 20, 1))
+    data = cv2.resize(data, (IMAGE_WIDTH, IMAGE_HEIGHT))
+    data = np.reshape(data, (IMAGE_HEIGHT,IMAGE_WIDTH, 1))
+    return (data, np.array([speed / 3000, steering]))
+
