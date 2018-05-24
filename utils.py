@@ -1,6 +1,8 @@
 import cv2, os
 import numpy as np
 import matplotlib.image as mpimg
+from PIL import Image
+
 
 
 IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_CHANNELS = 66, 200, 3
@@ -160,15 +162,29 @@ def batch_generator(data_dir, image_paths, steering_angles, batch_size, is_train
         yield images, steers
 
 def data_to_training_sample(lidar_data, speed, steering):
-    data = np.empty([300])
+    data = np.empty([288])
     for i in xrange(0, len(lidar_data)):
-        data[i] = lidar_data[i]
+        data[i] = float(lidar_data[i])
 
-    data[299] = speed
-    data[298] = steering
+    #data[299] = speed
+    #data[298] = steering
 
-    data = np.reshape(data, (15, 20, 1))
-    data = cv2.resize(data, (IMAGE_WIDTH, IMAGE_HEIGHT))
-    data = np.reshape(data, (IMAGE_HEIGHT,IMAGE_WIDTH, 1))
-    return (data, np.array([speed / 3000, steering]))
+    #data = np.reshape(data, (15, 20, 1))
+
+    # rescaled = (255.0 / data.max() * (data - data.min())).astype(np.uint8)
+    # rescaled = rescaled.reshape(15, 20)
+    # print (rescaled.shape)
+    # im = Image.fromarray(rescaled)
+    # im.save("/tmp/before.jpeg")
+
+    # data = cv2.resize(data, (IMAGE_WIDTH, IMAGE_HEIGHT))
+    # data = np.reshape(data, (IMAGE_HEIGHT,IMAGE_WIDTH, 1))
+
+
+    #rescaled = (255.0 / data.max() * (data - data.min())).astype(np.uint8)
+    #rescaled = rescaled.reshape(66, 200)
+    #print (rescaled.shape)
+    #im = Image.fromarray(rescaled)
+    #im.save("/tmp/after.jpeg")
+    return data, np.array([speed / 3000, steering])
 

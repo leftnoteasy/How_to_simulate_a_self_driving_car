@@ -11,6 +11,8 @@ import tensorflow as tf
 from utils import INPUT_SHAPE, batch_generator, IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_CHANNELS, DATA_SHAPE, DATA_LENGTH, data_to_training_sample
 #for command line arguments
 import argparse
+from PIL import Image
+
 #for reading files
 import os
 import cv2
@@ -20,23 +22,26 @@ np.random.seed(0)
 
 def batch_generator(x, y, batch_size):
     while (True):
-        images = np.empty([batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 1])
+        images = np.empty([batch_size, 288])
         outputs = np.empty([batch_size, 2])
 
         i = 0
         for index in np.random.permutation(x.shape[0]):
+
             images[i] = x[index]
             outputs[i] = y[index]
             i += 1
             if i == batch_size:
                 break
+        images = images.reshape(-1, 288)
+        outputs = outputs.reshape(40, 2)
 
         yield images, outputs
 
 def load_data(args):
     f = open(args.data_dir)
 
-    all_data_x = np.empty([0, 300])
+    all_data_x = np.empty(0)
     all_data_y = np.empty(0)
 
     raw_data = np.empty(288)
@@ -48,17 +53,19 @@ def load_data(args):
         if int(float(numbers[0])) != 288:
             speed = float(numbers[0])
             steering = float(numbers[1])
-            d = data_to_training_sample(raw_data, speed, steering)
-            print len(d[0])
-            all_data_x = np.append(all_data_x, d[0])
-            all_data_y = np.append(all_data_y, d[1])
+            x, y = data_to_training_sample(raw_data, speed, steering)
+            print len(x)
+            all_data_x = np.append(all_data_x, x)
+            all_data_y = np.append(all_data_y, y)
             i = i+1
         else:
             raw_data = np.empty(288)
             for n in xrange(1, len(numbers)):
                 raw_data[n - 1] = float(numbers[n])
 
-    all_data_x.resize(len(all_data_x) / 300, 300)
+    all_data_x = all_data_x.reshape((len(all_data_x) / 288, 288))
+    all_data_y = all_data_y.reshape((-1, 2))
+
     print all_data_x
     print "Found, ", i, " examples"
     print all_data_x, all_data_y
@@ -89,21 +96,20 @@ def build_model(args):
     ELU(Exponential linear unit) function takes care of the Vanishing gradient problem. 
     """
     model = tf.keras.Sequential()
-    model.add(tf.keras.layers.Lambda(lambda x: x/127.5-1.0, input_shape=(IMAGE_HEIGHT, IMAGE_WIDTH, 1)))
-    model.add(tf.keras.layers.Conv2D(24, (5, 5), strides=(2, 2), activation='elu', kernel_initializer='normal', bias_initializer='zeros'))
-    model.add(tf.keras.layers.Conv2D(36, (5, 5), strides=(2, 2), activation='elu', kernel_initializer='normal',
-              bias_initializer='zeros'))
-    model.add(tf.keras.layers.Conv2D(48, (5, 5), strides=(2, 2), activation='elu', kernel_initializer='normal',
-              bias_initializer='zeros'))
-    model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='elu', kernel_initializer='normal',
-                                     bias_initializer='zeros'))
-    model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='elu', kernel_initializer='normal',
-                                     bias_initializer='zeros'))
-    model.add(tf.keras.layers.Dropout(args.keep_prob))
-    model.add(tf.keras.layers.Flatten())
-    model.add(tf.keras.layers.Dense(100, activation='elu'))
-    model.add(tf.keras.layers.Dense(50, activation='elu'))
-    model.add(tf.keras.layers.Dense(10, activation='elu'))
+    #model.add(tf.keras.layers.Lambda(lambda x: x, input_shape=(IMAGE_HEIGHT, IMAGE_WIDTH, 1)))
+    #model.add(tf.keras.layers.Conv2D(24, (5, 5), strides=(2, 2), activation='relu'))
+    # model.add(tf.keras.layers.Conv2D(36, (5, 5), strides=(2, 2), activation='relu'))
+    # model.add(tf.keras.layers.Conv2D(48, (5, 5), strides=(2, 2), activation='relu'))
+    # model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='relu'))
+    # model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='relu'))
+    #model.add(tf.keras.layers.Dropout(args.keep_prob))
+    #model.add(tf.keras.layers.Flatten())
+    model.add(tf.keras.layers.Dense(100, activation='relu', input_shape=(288,)))
+    model.add(tf.keras.layers.Dense(50))
+    model.add(tf.keras.layers.Dense(20))
+    model.add(tf.keras.layers.Dense(10))
+    # model.add(tf.keras.layers.Dense(50, activation='relu'))
+    # model.add(tf.keras.layers.Dense(10, activation='relu'))
     model.add(tf.keras.layers.Dense(2))
     model.summary()
 
