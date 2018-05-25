@@ -35,11 +35,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     #load model
-    data = np.random.random_sample((12 * 12, 1))
-    data = np.reshape(data, (12, 12, 1))
-    data = cv2.resize(data, (IMAGE_WIDTH, IMAGE_HEIGHT))
-    data = np.reshape(data, (IMAGE_HEIGHT,IMAGE_WIDTH, 1))
+
     model = tf.keras.models.load_model(args.model)
-    steering_angle = float(model.predict(np.array([data]), batch_size=1))
-    print steering_angle
+    speed = model.predict(np.array([np.empty([288])]), batch_size=1)
+    print speed
 

@@ -48,20 +48,24 @@ def load_data(args):
 
     i = 0
     for line in f:
-        numbers = line.split(" ")
+        try:
+          numbers = line.split(" ")
 
-        if int(float(numbers[0])) != 288:
-            speed = float(numbers[0])
-            steering = float(numbers[1])
-            x, y = data_to_training_sample(raw_data, speed, steering)
-            print len(x)
-            all_data_x = np.append(all_data_x, x)
-            all_data_y = np.append(all_data_y, y)
-            i = i+1
-        else:
-            raw_data = np.empty(288)
-            for n in xrange(1, len(numbers)):
-                raw_data[n - 1] = float(numbers[n])
+          if int(float(numbers[0])) != 288:
+              speed = float(numbers[0])
+              steering = float(numbers[1])
+              x, y = data_to_training_sample(raw_data, speed, steering)
+              print len(x)
+              all_data_x = np.append(all_data_x, x)
+              all_data_y = np.append(all_data_y, y)
+              i = i+1
+          else:
+              raw_data = np.empty(288)
+              for n in xrange(1, len(numbers)):
+                  raw_data[n - 1] = float(numbers[n])
+        except ValueError:
+          continue
+
 
     all_data_x = all_data_x.reshape((len(all_data_x) / 288, 288))
     all_data_y = all_data_y.reshape((-1, 2))
